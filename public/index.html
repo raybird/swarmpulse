@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwarmPulse 3D - Docker Swarm 視覺化</title>
+    <meta name="description" content="即時 3D 視覺化 Docker Swarm 叢集狀態">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #0a0a0f;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        
+        #application {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        
+        /* 狀態面板 */
+        #status-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 10, 20, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 12px;
+            padding: 16px 20px;
+            color: #e0e0e0;
+            font-size: 14px;
+            min-width: 240px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        #status-panel h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #64d8ff;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        #status-panel h1::before {
+            content: '🌐';
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stat-label {
+            color: #888;
+        }
+        
+        .stat-value {
+            color: #64d8ff;
+            font-weight: 600;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        
+        .stat-value.online {
+            color: #4ade80;
+        }
+        
+        /* 節點列表 */
+        #node-list {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(10, 10, 20, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 12px;
+            padding: 16px 20px;
+            color: #e0e0e0;
+            font-size: 13px;
+            max-width: 320px;
+            max-height: 60vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        #node-list h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #64d8ff;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        #node-list h2::before {
+            content: '📊';
+        }
+        
+        .node-item {
+            background: rgba(100, 200, 255, 0.05);
+            border: 1px solid rgba(100, 200, 255, 0.15);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .node-item:hover {
+            background: rgba(100, 200, 255, 0.1);
+            border-color: rgba(100, 200, 255, 0.3);
+        }
+        
+        .node-item.new {
+            animation: nodeAppear 0.5s ease-out;
+        }
+        
+        @keyframes nodeAppear {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .node-hostname {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+        
+        .node-stats {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+        }
+        
+        .node-stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .node-stat-label {
+            color: #888;
+        }
+        
+        .node-stat-value {
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        
+        .cpu-value {
+            color: #f97316;
+        }
+        
+        .mem-value {
+            color: #a78bfa;
+        }
+        
+        /* 載入提示 */
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #64d8ff;
+            font-size: 20px;
+            text-align: center;
+        }
+        
+        #loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(100, 200, 255, 0.2);
+            border-top-color: #64d8ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* 滾動條樣式 */
+        #node-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #node-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+        
+        #node-list::-webkit-scrollbar-thumb {
+            background: rgba(100, 200, 255, 0.3);
+            border-radius: 3px;
+        }
+    </style>
+    
+    <!-- PlayCanvas Import Map -->
+    <script type="importmap">
+    {
+        "imports": {
+            "playcanvas": "https://cdn.jsdelivr.net/npm/playcanvas@2.4.0/build/playcanvas.mjs"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        正在初始化 3D 場景...
+    </div>
+    
+    <canvas id="application"></canvas>
+    
+    <div id="status-panel">
+        <h1>SwarmPulse 3D</h1>
+        <div class="stat-row">
+            <span class="stat-label">連線狀態</span>
+            <span class="stat-value" id="connection-status">連線中...</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">活躍節點</span>
+            <span class="stat-value" id="node-count">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">最後更新</span>
+            <span class="stat-value" id="last-update">--:--:--</span>
+        </div>
+    </div>
+    
+    <div id="node-list">
+        <h2>節點列表</h2>
+        <div id="nodes-container">
+            <p style="color: #888; text-align: center; padding: 20px;">
+                等待節點連線...
+            </p>
+        </div>
+    </div>
+    
+    <script type="module" src="game.js"></script>
+</body>
+</html>

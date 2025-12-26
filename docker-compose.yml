@@ -1,0 +1,85 @@
+# SwarmPulse 3D Docker Compose 配置
+# 用於 Docker Swarm 部署
+
+services:
+  # ============================================
+  # Server 服務
+  # - 負責收集所有 Worker 的狀態
+  # - 提供 oRPC API 和 3D 視覺化界面
+  # ============================================
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: swarmpulse:latest
+    environment:
+      - ENTRYPOINT_MODE=server
+      - PORT=3000
+      - HOST=0.0.0.0
+    ports:
+      - "3000:3000"
+    networks:
+      - swarm-net
+    deploy:
+      # 只運行一個實例
+      replicas: 1
+      # 只在 Manager 節點上運行
+      placement:
+        constraints:
+          - node.role == manager
+      # 重啟策略
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      # 資源限制
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # ============================================
+  # Client 服務 (Worker)
+  # - 在每個 Swarm 節點上運行一個實例
+  # - 負責收集本機系統資訊並發送心跳
+  # ============================================
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: swarmpulse:latest
+    environment:
+      - ENTRYPOINT_MODE=client
+      # 使用 Docker 內部 DNS 自動尋找 Server
+      - SERVER_URL=http://server:3000
+    networks:
+      - swarm-net
+    depends_on:
+      - server
+    deploy:
+      # Global 模式：每個節點運行一個實例
+      mode: global
+      # 重啟策略
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      # 資源限制
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+
+# ============================================
+# 網路配置
+# ============================================
+networks:
+  swarm-net:
+    driver: overlay
+    attachable: true

@@ -1,0 +1,24 @@
+{
+  "name": "swarmpulse",
+  "version": "1.0.0",
+  "description": "SwarmPulse 3D - Docker Swarm 分散式 3D 視覺化監控系統",
+  "type": "module",
+  "scripts": {
+    "server": "bun run src/server.ts",
+    "client": "bun run src/client.ts",
+    "dev": "bun run server",
+    "build": "bun build src/server.ts --outdir dist --target bun",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "dependencies": {
+    "@orpc/client": "^1.4.3",
+    "@orpc/server": "^1.4.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.2"
+  }
+}
