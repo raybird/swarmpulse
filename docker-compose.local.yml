@@ -1,0 +1,36 @@
+version: '3.3'
+
+# SwarmPulse 3D Docker Compose 本地測試組態
+# 移除了 Swarm 特定的 overlay 網路與 deploy 區段以利單機測試
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: swarmpulse:local
+    environment:
+      - ENTRYPOINT_MODE=server
+      - PORT=3000
+      - HOST=0.0.0.0
+    ports:
+      - "3000:3000"
+    networks:
+      - swarm-net-local
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: swarmpulse:local
+    environment:
+      - ENTRYPOINT_MODE=client
+      - SERVER_URL=http://server:3000
+    networks:
+      - swarm-net-local
+    depends_on:
+      - server
+
+networks:
+  swarm-net-local:
+    driver: bridge

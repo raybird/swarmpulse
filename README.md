@@ -104,6 +104,24 @@ bun run client
 open http://localhost:3000
 ```
 
+### 🐳 Docker Compose 本地單機測試
+
+若您想在不使用 Swarm 模式的情況下，在單機 Docker 環境中測試容器化部署，請使用專用的 `docker-compose.local.yml`：
+
+```bash
+# 啟動服務 (Server + 1 Client)
+docker-compose -f docker-compose.local.yml up --build -d
+
+# 查看容器狀態
+docker-compose -f docker-compose.local.yml ps
+
+# 查看日誌
+docker-compose -f docker-compose.local.yml logs -f
+
+# 停止並移除容器
+docker-compose -f docker-compose.local.yml down
+```
+
 ---
 
 ## 🐳 Docker Swarm 部署
@@ -133,6 +151,81 @@ docker stack deploy -c docker-compose.yml swarmpulse
 ```bash
 docker service logs swarmpulse_server -f
 open http://localhost:3000
+```
+
+---
+
+## ☁️ Swarm 叢集模擬 (Multipass)
+
+如果您沒有現成的 Swarm 叢集，可以使用 [Multipass](https://multipass.run/) 快速建立 3 個 Ubuntu 虛擬機來模擬真實環境。
+
+### 1. 建立虛擬機
+
+```bash
+# 建立 Manager 節點與 Worker 節點
+multipass launch --name manager --cpus 2 --mem 2G --disk 10G
+multipass launch --name worker1 --cpus 1 --mem 1G --disk 5G
+multipass launch --name worker2 --cpus 1 --mem 1G --disk 5G
+```
+
+### 2. 安裝 Docker (所有節點)
+
+在此步驟，我們利用 `multipass exec` 在所有 VM 上安裝 Docker：
+
+```bash
+# 定義安裝腳本
+install_docker="curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker ubuntu"
+
+# 批量執行
+multipass exec manager -- bash -c "$install_docker"
+multipass exec worker1 -- bash -c "$install_docker"
+multipass exec worker2 -- bash -c "$install_docker"
+```
+
+### 3. 初始化 Swarm 叢集
+
+**設定 Manager:**
+
+```bash
+# 取得 Manager IP
+MANAGER_IP=$(multipass info manager | grep IPv4 | awk '{print $2}')
+
+# 初始化 Swarm
+multipass exec manager -- docker swarm init --advertise-addr $MANAGER_IP
+
+# 取得 Worker 加入指令 (Token)
+JOIN_TOKEN=$(multipass exec manager -- docker swarm join-token worker -q)
+```
+
+**加入 Workers:**
+
+```bash
+# 讓 Worker 節點加入叢集
+multipass exec worker1 -- docker swarm join --token $JOIN_TOKEN $MANAGER_IP:2377
+multipass exec worker2 -- docker swarm join --token $JOIN_TOKEN $MANAGER_IP:2377
+```
+
+### 4. 部署 SwarmPulse
+
+將專案程式碼複製到 Manager 節點並部署：
+
+```bash
+# 傳送程式碼到 Manager
+multipass transfer -r . manager:/home/ubuntu/swarmpulse
+
+# 在 Manager 上部署 Stack
+multipass exec manager -- bash -c "cd swarmpulse && docker stack deploy -c docker-compose.yml swarmpulse"
+```
+
+### 5. 驗證與存取
+
+```bash
+# 查看服務狀態
+multipass exec manager -- docker service ls
+
+# 存取網頁介面
+# 使用 Manager 的 IP 開啟瀏覽器
+open http://$MANAGER_IP:3000
 ```
 
 ---
