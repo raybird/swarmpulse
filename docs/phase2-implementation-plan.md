@@ -4,6 +4,7 @@
 
 **文件建立日期**: 2026-01-01  
 **最後更新日期**: 2026-01-01  
+**實際完成日期**: 2026-01-01  
 **預估總工時**: 17 小時
 
 ---
@@ -12,10 +13,10 @@
 
 | # | 功能 | 優先級 | 預估工時 | 狀態 | 相依性 |
 |:---:|:---|:---:|:---:|:---:|:---|
-| 2.1 | Container 衛星效果 | P1 | 5h | 🔲 | Phase 1 完成 |
-| 2.2 | Manager-Worker 連線動畫 | P1 | 6h | 🔲 | 2.1 完成 |
-| 2.3 | 異常警報特效 | P2 | 4h | 🔲 | 無 |
-| 2.4 | 節點健康度顏色漸變 | P2 | 2h | 🔲 | 無 |
+| 2.1 | Container 衛星效果 | P1 | 5h | ✅ | Phase 1 完成 |
+| 2.2 | Manager-Worker 連線動畫 | P1 | 6h | ✅ | 2.1 完成 |
+| 2.3 | 異常警報特效 | P2 | 4h | ✅ | 無 |
+| 2.4 | 節點健康度顏色漸變 | P2 | 2h | ✅ | 無 |
 
 ---
 
@@ -186,10 +187,10 @@ function updateNodeSatellites(nodeData, containerCount) {
 2. 啟動 SwarmPulse Server：`npm run server`
 3. 開啟瀏覽器至 `http://localhost:3000`
 4. 驗證：
-   - [ ] 有 Container 的節點周圍出現小衛星
-   - [ ] 衛星數量與 Container 數量相符（最多 10 個）
-   - [ ] 衛星平滑繞行星球
-   - [ ] Container 增減時衛星有出現/消失動畫
+   - [x] 有 Container 的節點周圍出現小衛星
+   - [x] 衛星數量與 Container 數量相符（最多 10 個）
+   - [x] 衛星平滑繞行星球
+   - [x] Container 增減時衛星有出現/消失動畫
 
 ---
 
@@ -401,10 +402,10 @@ function updateNodeState(nodeData, newState) {
 2. 啟動 SwarmPulse：`npm run server`
 3. 開啟瀏覽器至 `http://localhost:3000`
 4. 驗證：
-   - [ ] Manager 節點有明顯的星形/皇冠標記
-   - [ ] Manager 與每個 Worker 之間有連線
-   - [ ] 心跳時可見光點從 Worker 流向 Manager
-   - [ ] 連線顏色為半透明藍色
+   - [x] Manager 節點有明顯的星形/皇冠標記
+   - [x] Manager 與每個 Worker 之間有連線
+   - [x] 心跳時可見光點從 Worker 流向 Manager
+   - [x] 連線顏色為半透明藍色
 
 ---
 
@@ -576,10 +577,10 @@ for (const [nodeId, nodeData] of nodeEntities) {
 2. 啟動 SwarmPulse：`npm run server`
 3. 開啟瀏覽器至 `http://localhost:3000`
 4. 驗證：
-   - [ ] CPU/Memory > 70% 時出現橘色警告光環
-   - [ ] CPU/Memory > 85% 時出現紅色粒子效果
-   - [ ] CPU/Memory > 95% 時節點震動並強烈閃爍
-   - [ ] 壓力解除後效果消失
+   - [x] CPU/Memory > 70% 時出現橘色警告光環
+   - [x] CPU/Memory > 85% 時出現紅色粒子效果
+   - [x] CPU/Memory > 95% 時節點震動並強烈閃爍
+   - [x] 壓力解除後效果消失
 
 ---
 
@@ -714,11 +715,11 @@ for (const [nodeId, nodeData] of nodeEntities) {
 2. 啟動 SwarmPulse：`npm run server`
 3. 開啟瀏覽器至 `http://localhost:3000`
 4. 驗證：
-   - [ ] 低負載節點呈現綠色
-   - [ ] 中等負載節點呈現黃/橘色
-   - [ ] 高負載節點呈現紅色
-   - [ ] 負載變化時顏色平滑過渡（不跳變）
-   - [ ] Hover 面板顯示的數值與顏色一致
+   - [x] 低負載節點呈現綠色
+   - [x] 中等負載節點呈現黃/橘色
+   - [x] 高負載節點呈現紅色
+   - [x] 負載變化時顏色平滑過渡（不跳變）
+   - [x] Hover 面板顯示的數值與顏色一致
 
 ---
 
@@ -778,24 +779,24 @@ graph TD
 ## ✅ 驗收標準
 
 ### 2.1 Container 衛星效果
-- [ ] 衛星數量正確反映 Container 數量
-- [ ] 衛星繞行動畫流暢
-- [ ] Container 增減時有過渡動畫
+- [x] 衛星數量正確反映 Container 數量
+- [x] 衛星繞行動畫流暢
+- [x] Container 增減時有過渡動畫
 
 ### 2.2 Manager-Worker 連線動畫
-- [ ] Manager 有明顯視覺標記
-- [ ] 連線正確繪製於 Manager 與 Worker 之間
-- [ ] 光點流動效果正常
+- [x] Manager 有明顯視覺標記
+- [x] 連線正確繪製於 Manager 與 Worker 之間
+- [x] 光點流動效果正常
 
 ### 2.3 異常警報特效
-- [ ] 警告/危險/緊急三種等級效果明確區分
-- [ ] 閾值可配置
-- [ ] 效果觸發與解除正常
+- [x] 警告/危險/緊急三種等級效果明確區分
+- [x] 閾值可配置
+- [x] 效果觸發與解除正常
 
 ### 2.4 節點健康度顏色漸變
-- [ ] 健康度計算合理
-- [ ] 顏色過渡平滑
-- [ ] 與 UI 面板數值一致
+- [x] 健康度計算合理
+- [x] 顏色過渡平滑
+- [x] 與 UI 面板數值一致
 
 ---
 
