@@ -213,8 +213,14 @@ multipass exec worker2 -- docker swarm join --token $JOIN_TOKEN $MANAGER_IP:2377
 # 傳送程式碼到 Manager
 multipass transfer -r . manager:/home/ubuntu/swarmpulse
 
-# 在 Manager 上部署 Stack
+# 1. 建置映像 (必須先建置，否則 Stack Deploy 會因找不到映像檔而失敗)
+multipass exec manager -- bash -c "cd swarmpulse && docker compose build"
+
+# 2. 在 Manager 上部署 Stack
 multipass exec manager -- bash -c "cd swarmpulse && docker stack deploy -c docker-compose.yml swarmpulse"
+```
+
+> **⚠️ 注意**: 在此簡易模擬環境中，由於未架設 Shared Registry，Worker 節點將無法拉取 Manager 建置的本地映像檔。因此，Client 服務僅能在 Manager 節點上成功運行，Worker 節點會報錯 `No such image`。若需全叢集運行，需設定 Local Registry。
 ```
 
 ### 5. 驗證與存取
