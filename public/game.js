@@ -32,6 +32,24 @@ const CONFIG = {
 
     // 出現動畫時間（秒）
     APPEAR_DURATION: 0.5,
+
+    // 衛星配置
+    SATELLITE_SIZE: 0.15, // 衛星大小
+    SATELLITE_ORBIT_RADIUS: 1.5, // 軌道半徑倍數
+    SATELLITE_SPEED: 0.5, // 基礎繞行速度
+    SATELLITE_MAX_COUNT: 10, // 最大顯示衛星數
+
+    // 連線配置
+    CONNECTION_COLOR: new pc.Color(0.2, 0.5, 1.0, 0.3), // 半透明藍色
+    DATA_PARTICLE_COLOR: new pc.Color(0.4, 0.8, 1.0),
+
+    // 警報配置
+    ALERT_THRESHOLDS: { warning: 70, danger: 85, critical: 95 },
+    ALERT_COLORS: {
+        warning: new pc.Color(1.0, 0.6, 0.0), // 橘色
+        danger: new pc.Color(1.0, 0.2, 0.0), // 紅色
+        critical: new pc.Color(1.0, 0.0, 0.0), // 深紅
+    },
 };
 
 // ============================================
@@ -411,6 +429,12 @@ function createNodeEntity(nodeState, index, totalNodes) {
 
     container.addChild(sphere);
 
+    // Manager 節點加入特殊標記
+    if (nodeState.role === 'manager') {
+        const crown = createManagerCrown();
+        sphere.addChild(crown);
+    }
+
     // 建立光環
     const ring = createNodeRing();
     container.addChild(ring);
@@ -432,6 +456,9 @@ function createNodeEntity(nodeState, index, totalNodes) {
     };
 
     nodeEntities.set(nodeState.nodeId, nodeData);
+
+    // 初始化衛星
+    updateNodeSatellites(nodeData, nodeState.containers?.length || 0);
 
     return nodeData;
 }
@@ -486,6 +513,20 @@ function updateNodeState(nodeData, newState) {
     nodeData.state = newState;
     nodeData.rotationSpeed = calculateRotationSpeed(newState.cpuUsage);
     nodeData.emissionIntensity = calculateEmission(newState.memoryUsage);
+
+    // 更新衛星數量
+    updateNodeSatellites(nodeData, newState.containers?.length || 0);
+
+    // 檢查警報狀態
+    checkAlertStatus(nodeData, newState);
+
+    // 更新健康度顏色
+    updateHealthColor(nodeData, newState);
+
+    // 如果收到心跳且是 Worker，觸發向 Manager 的粒子
+    if (newState.role === 'worker') {
+        spawnHeartbeatParticle(nodeData);
+    }
 }
 
 /**
@@ -514,12 +555,241 @@ function rearrangeNodes() {
         const targetX = Math.cos(angle) * CONFIG.NODE_CIRCLE_RADIUS;
         const targetZ = Math.sin(angle) * CONFIG.NODE_CIRCLE_RADIUS;
 
-        // 平滑移動到新位置
-        const pos = nodeData.entity.getPosition();
-        const newX = pc.math.lerp(pos.x, targetX, 0.1);
-        const newZ = pc.math.lerp(pos.z, targetZ, 0.1);
-        nodeData.entity.setPosition(newX, 0, newZ);
+        // 設定目標位置，由 update loop 處理移動
+        nodeData.targetPos = new pc.Vec3(targetX, 0, targetZ);
     });
+}
+
+/**
+ * 建立衛星 3D 實體
+ */
+function createSatellite(parent, index, total) {
+    const satellite = new pc.Entity('satellite-' + index);
+
+    // 球體渲染
+    satellite.addComponent('render', {
+        type: 'sphere',
+    });
+
+    // 建立材質
+    const material = new pc.StandardMaterial();
+    material.diffuse = new pc.Color(0.3, 0.8, 1.0);
+    material.emissive = new pc.Color(0.1, 0.4, 0.8);
+    material.emissiveIntensity = 1.0;
+    material.metalness = 0.6;
+    material.gloss = 0.9;
+    material.update();
+    satellite.render.meshInstances[0].material = material;
+
+    satellite.setLocalScale(
+        CONFIG.SATELLITE_SIZE,
+        CONFIG.SATELLITE_SIZE,
+        CONFIG.SATELLITE_SIZE
+    );
+
+    // 儲存軌道資訊
+    satellite.orbitIndex = index;
+    satellite.orbitTotal = total;
+    satellite.orbitPhase = (index / total) * Math.PI * 2;
+
+    parent.addChild(satellite);
+    return satellite;
+}
+
+/**
+ * 更新衛星軌道動畫
+ */
+function updateSatelliteOrbit(satellite, dt, parentRadius) {
+    const orbitRadius = parentRadius * CONFIG.SATELLITE_ORBIT_RADIUS;
+    satellite.orbitPhase += CONFIG.SATELLITE_SPEED * dt;
+
+    // 橢圓軌道
+    const x = Math.cos(satellite.orbitPhase) * orbitRadius;
+    const z = Math.sin(satellite.orbitPhase) * orbitRadius * 0.7;
+    const y = Math.sin(satellite.orbitPhase * 2) * 0.2;
+
+    satellite.setLocalPosition(x, y, z);
+}
+
+/**
+ * 動態更新節點衛星
+ */
+function updateNodeSatellites(nodeData, containerCount) {
+    const targetCount = Math.min(containerCount, CONFIG.SATELLITE_MAX_COUNT);
+    const satellites = nodeData.satellites || [];
+
+    if (targetCount > satellites.length) {
+        // 新增衛星
+        for (let i = satellites.length; i < targetCount; i++) {
+            const sat = createSatellite(nodeData.sphere, i, targetCount);
+            satellites.push(sat);
+        }
+    } else if (targetCount < satellites.length) {
+        // 移除衛星
+        for (let i = satellites.length - 1; i >= targetCount; i--) {
+            const sat = satellites.pop();
+            sat.destroy();
+        }
+    }
+
+    nodeData.satellites = satellites;
+}
+
+/**
+ * 建立 Manager 皇冠標記
+ */
+function createManagerCrown() {
+    const crown = new pc.Entity('manager-crown');
+    const starPoints = 5;
+
+    // 建立皇冠材質
+    const material = new pc.StandardMaterial();
+    material.diffuse = new pc.Color(1.0, 0.8, 0.2);
+    material.emissive = new pc.Color(1.0, 0.6, 0.0);
+    material.emissiveIntensity = 1.0;
+    material.update();
+
+    for (let i = 0; i < starPoints; i++) {
+        const point = new pc.Entity('crown-point-' + i);
+        point.addComponent('render', { type: 'sphere' });
+        point.setLocalScale(0.12, 0.12, 0.12);
+
+        const angle = (i / starPoints) * Math.PI * 2;
+        const radius = 0.6;
+        point.setLocalPosition(
+            Math.cos(angle) * radius,
+            0.8,
+            Math.sin(angle) * radius
+        );
+        point.render.meshInstances[0].material = material;
+        crown.addChild(point);
+    }
+
+    return crown;
+}
+
+/**
+ * 心跳粒子類別
+ */
+class DataParticle {
+    constructor(startPos, endPos) {
+        this.entity = new pc.Entity('data-particle');
+        this.entity.addComponent('render', { type: 'sphere' });
+
+        const material = new pc.StandardMaterial();
+        material.emissive = CONFIG.DATA_PARTICLE_COLOR;
+        material.emissiveIntensity = 2.0;
+        material.update();
+
+        this.entity.setLocalScale(0.08, 0.08, 0.08);
+        this.startPos = startPos.clone();
+        this.endPos = endPos.clone();
+        this.progress = 0;
+
+        app.root.addChild(this.entity);
+        this.entity.render.meshInstances[0].material = material;
+    }
+
+    update(dt) {
+        this.progress += dt * CONFIG.DATA_PARTICLE_SPEED;
+        if (this.progress >= 1) {
+            this.entity.destroy();
+            return false;
+        }
+        const pos = new pc.Vec3().lerp(this.startPos, this.endPos, this.progress);
+        this.entity.setPosition(pos);
+        return true;
+    }
+}
+
+const activeParticles = [];
+
+/**
+ * 產生心跳粒子
+ */
+function spawnHeartbeatParticle(workerData) {
+    // 尋找 Manager 節點
+    let managerData = null;
+    for (const node of nodeEntities.values()) {
+        if (node.state.role === 'manager') {
+            managerData = node;
+            break;
+        }
+    }
+
+    if (managerData) {
+        const particle = new DataParticle(
+            workerData.entity.getPosition(),
+            managerData.entity.getPosition()
+        );
+        activeParticles.push(particle);
+    }
+}
+
+/**
+ * 檢查警報狀態並觸發效果
+ */
+function checkAlertStatus(nodeData, nodeState) {
+    const maxUsage = Math.max(nodeState.cpuUsage, nodeState.memoryUsage);
+    let level = null;
+
+    if (maxUsage >= CONFIG.ALERT_THRESHOLDS.critical) level = 'critical';
+    else if (maxUsage >= CONFIG.ALERT_THRESHOLDS.danger) level = 'danger';
+    else if (maxUsage >= CONFIG.ALERT_THRESHOLDS.warning) level = 'warning';
+
+    if (level !== nodeData.alertLevel) {
+        // 移除現有效果
+        if (nodeData.alertParticles) {
+            nodeData.alertParticles.destroy();
+            nodeData.alertParticles = null;
+        }
+
+        // 建立新效果
+        if (level) {
+            nodeData.alertParticles = createAlertParticles(nodeData.sphere, level);
+        }
+        nodeData.alertLevel = level;
+    }
+}
+
+/**
+ * 建立警報粒子系統
+ */
+function createAlertParticles(parent, level) {
+    const particles = new pc.Entity('alert-particles');
+    // 注意：PlayCanvas 粒子系統通常需要非同步載入資產或預先定義
+    // 這裡我們使用簡單的發光球體替代，模擬粒子效果
+    const sphere = new pc.Entity('alert-sphere');
+    sphere.addComponent('render', { type: 'sphere' });
+
+    const color = CONFIG.ALERT_COLORS[level];
+    const material = new pc.StandardMaterial();
+    material.emissive = color;
+    material.emissiveIntensity = 2.0;
+    material.opacity = 0.5;
+    material.blendType = pc.BLEND_ADDITIVE;
+    material.update();
+
+    sphere.setLocalScale(1.2, 1.2, 1.2);
+    parent.addChild(sphere);
+    sphere.render.meshInstances[0].material = material;
+
+    return sphere;
+}
+
+/**
+ * 更新健康度顏色
+ */
+function updateHealthColor(nodeData, nodeState) {
+    const maxUsage = Math.max(nodeState.cpuUsage, nodeState.memoryUsage);
+    const health = Math.max(0, 100 - maxUsage);
+
+    // HSL 映射: 120 (綠) -> 0 (紅)
+    const hue = (health / 100) * 120;
+    const rgb = hslToRgb(hue, 0.8, 0.5);
+    const targetColor = new pc.Color(rgb.r, rgb.g, rgb.b);
+
+    nodeData.targetColor = targetColor;
 }
 
 // ============================================
@@ -788,15 +1058,66 @@ function setupUpdateLoop() {
             // 旋轉
             nodeData.container.rotate(0, nodeData.rotationSpeed * dt, 0);
 
+            // 更新顏色平滑過渡
+            if (nodeData.targetColor) {
+                const cur = nodeData.material.diffuse;
+                const tar = nodeData.targetColor;
+                cur.lerp(cur, tar, dt * 2);
+                nodeData.material.diffuse = cur;
+                nodeData.material.emissive = new pc.Color(cur.r * 0.3, cur.g * 0.3, cur.b * 0.3);
+                nodeData.material.update();
+                if (cur.distance(tar) < 0.01) nodeData.targetColor = null;
+            }
+
             // 更新發光強度（平滑過渡）
             const currentEmission = nodeData.material.emissiveIntensity;
             const targetEmission = nodeData.emissionIntensity;
             nodeData.material.emissiveIntensity = pc.math.lerp(currentEmission, targetEmission, dt * 2);
             nodeData.material.update();
 
+            // 震動動畫（緊急等級）
+            if (nodeData.alertLevel === 'critical') {
+                const shake = Math.sin(time * 30) * 0.02;
+                nodeData.sphere.setLocalPosition(shake, shake * 0.5, shake);
+            } else {
+                nodeData.sphere.setLocalPosition(0, 0, 0);
+            }
+
+            // 平滑移動到目標位置
+            if (nodeData.targetPos) {
+                const currentPos = nodeData.entity.getPosition();
+                const newPos = new pc.Vec3();
+                newPos.lerp(currentPos, nodeData.targetPos, dt * 2.0);
+                nodeData.entity.setPosition(newPos);
+
+                // 如果非常接近目標，就設為目標位置以節省計算（可選，但為了平滑保持 continuous lerp 也可以）
+                if (newPos.distance(nodeData.targetPos) < 0.01) {
+                    // nodeData.targetPos = null; // 保持 targetPos 以便重新排列時更新
+                }
+            }
+
             // 光環脈動
             const ringScale = 0.8 + Math.sin(time * 2) * 0.05;
             nodeData.ring.setLocalScale(ringScale, ringScale, 0.1);
+
+            // 更新衛星動畫
+            if (nodeData.satellites) {
+                for (const sat of nodeData.satellites) {
+                    updateSatelliteOrbit(sat, dt, CONFIG.NODE_BASE_SIZE);
+                }
+            }
+
+            // 繪製與 Manager 的連線
+            if (nodeData.state.role === 'worker') {
+                drawConnectionLine(nodeData);
+            }
+        }
+
+        // 更新粒子動畫
+        for (let i = activeParticles.length - 1; i >= 0; i--) {
+            if (!activeParticles[i].update(dt)) {
+                activeParticles.splice(i, 1);
+            }
         }
 
         // 更新消散動畫
@@ -941,6 +1262,11 @@ async function syncClusterState() {
     // 更新 UI
     updateStatusPanel(status);
     updateNodeList(status.nodes);
+
+    // 如果節點數量變動，重新排列
+    if (nodes.length !== previousNodeIds.size) {
+        rearrangeNodes();
+    }
 }
 
 
@@ -1037,6 +1363,27 @@ async function main() {
     await initPlayCanvas();
     setupUpdateLoop();
     setupSearch();
+
+    /**
+     * 繪製連線（使用立即模式繪製線條，每幀呼叫）
+     */
+    function drawConnectionLine(workerData) {
+        let managerData = null;
+        for (const node of nodeEntities.values()) {
+            if (node.state.role === 'manager') {
+                managerData = node;
+                break;
+            }
+        }
+
+        if (managerData) {
+            app.renderLine(
+                workerData.entity.getPosition(),
+                managerData.entity.getPosition(),
+                CONFIG.CONNECTION_COLOR
+            );
+        }
+    }
 
     // 開始資料同步
     await syncClusterState();
