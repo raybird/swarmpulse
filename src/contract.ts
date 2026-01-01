@@ -11,11 +11,23 @@ import * as z from 'zod';
 // ============================================
 
 /**
+ * Container 資訊 Schema
+ */
+export const ContainerInfoSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    image: z.string(),
+    status: z.string(),
+});
+
+export type ContainerInfo = z.infer<typeof ContainerInfoSchema>;
+
+/**
  * 節點狀態 Schema
  * 描述單一 Swarm 節點的運行狀態
  */
 export const NodeStateSchema = z.object({
-    // 節點唯一識別碼（通常為 container ID 或 hostname）
+    // 節點唯一識別碼
     nodeId: z.string().min(1),
     // 主機名稱
     hostname: z.string(),
@@ -23,6 +35,14 @@ export const NodeStateSchema = z.object({
     cpuUsage: z.number().min(0).max(100),
     // 記憶體使用率（0-100）
     memoryUsage: z.number().min(0).max(100),
+    // 磁碟使用率（0-100，可選）
+    diskUsage: z.number().min(0).max(100).optional(),
+    // 節點角色（可選）
+    role: z.enum(['manager', 'worker']).optional(),
+    // IP 位址（可選）
+    ip: z.string().optional(),
+    // Container 列表（可選）
+    containers: z.array(ContainerInfoSchema).optional(),
     // 心跳時間戳
     timestamp: z.number(),
 });

@@ -3,11 +3,15 @@
  * 負責收集本機系統資訊並定時發送心跳給 Server
  */
 
-import { hostname, cpus, totalmem, freemem } from 'node:os';
+import { hostname, cpus, totalmem, freemem, networkInterfaces } from 'node:os';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createORPCClient } from '@orpc/client';
 import { RPCLink } from '@orpc/client/fetch';
-import type { AppRouter } from './contract';
+import type { AppRouter, ContainerInfo } from './contract';
 import type { RouterClient } from '@orpc/server';
+
+const execAsync = promisify(exec);
 
 // ============================================
 // 配置
@@ -80,6 +84,61 @@ function getMemoryUsage(): number {
     return Math.round(usage * 100) / 100; // 保留兩位小數
 }
 
+/**
+ * 獲取磁碟使用率
+ */
+async function getDiskUsage(): Promise<number | undefined> {
+    try {
+        const { stdout } = await execAsync("df -h / | tail -1 | awk '{print $5}'");
+        return parseFloat(stdout.replace('%', ''));
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * 獲取節點角色
+ */
+async function getRole(): Promise<'manager' | 'worker' | undefined> {
+    try {
+        const { stdout } = await execAsync("docker info --format '{{.Swarm.ControlAvailable}}'");
+        return stdout.trim() === 'true' ? 'manager' : 'worker';
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * 獲取本地 IP
+ */
+function getIp(): string | undefined {
+    const nets = networkInterfaces();
+    for (const name of Object.keys(nets)) {
+        for (const net of nets[name]!) {
+            // 跳過非 IPv4 和回環位址
+            if (net.family === 'IPv4' && !net.internal) {
+                return net.address;
+            }
+        }
+    }
+    return undefined;
+}
+
+/**
+ * 獲取運行中的 Containers
+ */
+async function getContainers(): Promise<ContainerInfo[] | undefined> {
+    try {
+        const { stdout } = await execAsync('docker ps --format "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}"');
+        return stdout.trim().split('\n').filter(Boolean).map(line => {
+            const [id, name, image, status] = line.split('|');
+            return { id, name, image, status };
+        });
+    } catch {
+        return undefined;
+    }
+}
+
 // ============================================
 // oRPC Client
 // ============================================
@@ -107,11 +166,22 @@ const MAX_FAILURES_LOG = 5; // 連續失敗多少次後減少日誌輸出
  * 發送心跳
  */
 async function sendHeartbeat(): Promise<void> {
+    // 並行取得非同步資料
+    const [diskUsage, role, containers] = await Promise.all([
+        getDiskUsage(),
+        getRole(),
+        getContainers()
+    ]);
+
     const nodeState = {
         nodeId: NODE_ID,
         hostname: hostname(),
         cpuUsage: getCpuUsage(),
         memoryUsage: getMemoryUsage(),
+        diskUsage,
+        role,
+        ip: getIp(),
+        containers,
         timestamp: Date.now(),
     };
 

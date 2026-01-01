@@ -1,30 +1,31 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SwarmPulse 3D - Docker Swarm 視覺化</title>
     <meta name="description" content="即時 3D 視覺化 Docker Swarm 叢集狀態">
-    
+
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             overflow: hidden;
             background: #0a0a0f;
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
         }
-        
+
         #application {
             width: 100vw;
             height: 100vh;
             display: block;
         }
-        
+
         /* 狀態面板 */
         #status-panel {
             position: fixed;
@@ -40,7 +41,7 @@
             min-width: 240px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         }
-        
+
         #status-panel h1 {
             font-size: 18px;
             font-weight: 600;
@@ -50,11 +51,11 @@
             align-items: center;
             gap: 8px;
         }
-        
+
         #status-panel h1::before {
             content: '🌐';
         }
-        
+
         .stat-row {
             display: flex;
             justify-content: space-between;
@@ -62,21 +63,21 @@
             padding: 6px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        
+
         .stat-label {
             color: #888;
         }
-        
+
         .stat-value {
             color: #64d8ff;
             font-weight: 600;
             font-family: 'Consolas', 'Monaco', monospace;
         }
-        
+
         .stat-value.online {
             color: #4ade80;
         }
-        
+
         /* 節點列表 */
         #node-list {
             position: fixed;
@@ -94,7 +95,7 @@
             overflow-y: auto;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         }
-        
+
         #node-list h2 {
             font-size: 16px;
             font-weight: 600;
@@ -104,11 +105,11 @@
             align-items: center;
             gap: 8px;
         }
-        
+
         #node-list h2::before {
             content: '📊';
         }
-        
+
         .node-item {
             background: rgba(100, 200, 255, 0.05);
             border: 1px solid rgba(100, 200, 255, 0.15);
@@ -117,62 +118,124 @@
             margin-bottom: 8px;
             transition: all 0.3s ease;
         }
-        
+
         .node-item:hover {
             background: rgba(100, 200, 255, 0.1);
             border-color: rgba(100, 200, 255, 0.3);
         }
-        
+
         .node-item.new {
             animation: nodeAppear 0.5s ease-out;
         }
-        
+
         @keyframes nodeAppear {
             from {
                 opacity: 0;
                 transform: translateX(20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateX(0);
             }
         }
-        
+
         .node-hostname {
             font-weight: 600;
             color: #fff;
             margin-bottom: 6px;
             font-size: 14px;
         }
-        
+
         .node-stats {
             display: flex;
             gap: 16px;
             font-size: 12px;
         }
-        
+
         .node-stat {
             display: flex;
             align-items: center;
             gap: 4px;
         }
-        
+
         .node-stat-label {
             color: #888;
         }
-        
+
         .node-stat-value {
             font-family: 'Consolas', 'Monaco', monospace;
         }
-        
+
         .cpu-value {
             color: #f97316;
         }
-        
+
         .mem-value {
             color: #a78bfa;
         }
-        
+
+        /* 搜尋列 */
+        .search-container {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 10, 20, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 30px;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 400px;
+            max-width: 90vw;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        .search-container:focus-within {
+            border-color: rgba(100, 200, 255, 0.8);
+            width: 450px;
+        }
+
+        .search-icon {
+            color: #64d8ff;
+            font-size: 16px;
+        }
+
+        #search-input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+        }
+
+        #search-input::placeholder {
+            color: #555;
+        }
+
+        .search-clear {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 16px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .search-clear:hover {
+            color: #fff;
+        }
+
+        .search-clear.hidden {
+            display: none;
+        }
+
         /* 載入提示 */
         #loading {
             position: fixed;
@@ -183,7 +246,7 @@
             font-size: 20px;
             text-align: center;
         }
-        
+
         #loading .spinner {
             width: 40px;
             height: 40px;
@@ -193,27 +256,226 @@
             animation: spin 1s linear infinite;
             margin: 0 auto 16px;
         }
-        
+
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
-        
+
         /* 滾動條樣式 */
         #node-list::-webkit-scrollbar {
             width: 6px;
         }
-        
+
         #node-list::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.05);
             border-radius: 3px;
         }
-        
+
         #node-list::-webkit-scrollbar-thumb {
             background: rgba(100, 200, 255, 0.3);
             border-radius: 3px;
         }
+
+        /* Hover 面板 */
+        .hover-panel {
+            position: fixed;
+            pointer-events: none;
+            background: rgba(10, 15, 30, 0.95);
+            border: 1px solid rgba(100, 150, 255, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            min-width: 220px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            transition: opacity 0.15s ease;
+        }
+
+        .hover-panel.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .hover-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .hover-hostname {
+            font-size: 14px;
+            font-weight: 600;
+            color: #7dd3fc;
+        }
+
+        .hover-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+            font-size: 12px;
+        }
+
+        .hover-label {
+            color: #888;
+            min-width: 70px;
+        }
+
+        .hover-value {
+            color: #fff;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+
+        .hover-bar {
+            flex: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .hover-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #22c55e, #eab308, #ef4444);
+            transition: width 0.2s ease;
+        }
+
+        .hover-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 8px 0;
+        }
+
+        /* 詳情面板 */
+        .detail-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            max-height: calc(100vh - 40px);
+            background: rgba(10, 15, 30, 0.95);
+            border: 1px solid rgba(100, 150, 255, 0.4);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(15px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+            z-index: 1100;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+        }
+
+        .detail-panel.hidden {
+            opacity: 0;
+            transform: translateX(400px);
+            pointer-events: none;
+        }
+
+        .detail-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .detail-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #64d8ff;
+        }
+
+        .detail-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .detail-close:hover {
+            color: #fff;
+        }
+
+        .detail-content {
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .detail-section {
+            margin-bottom: 24px;
+        }
+
+        .detail-section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detail-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .detail-info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .detail-info-label {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .detail-info-value {
+            font-size: 13px;
+            color: #eee;
+            word-break: break-all;
+        }
+
+        /* Container 列表樣式 */
+        .container-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+        }
+
+        .container-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .container-image {
+            font-size: 11px;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .container-status {
+            font-size: 11px;
+            margin-top: 6px;
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+        }
     </style>
-    
+
     <!-- PlayCanvas Import Map -->
     <script type="importmap">
     {
@@ -223,14 +485,15 @@
     }
     </script>
 </head>
+
 <body>
     <div id="loading">
         <div class="spinner"></div>
         正在初始化 3D 場景...
     </div>
-    
+
     <canvas id="application"></canvas>
-    
+
     <div id="status-panel">
         <h1>SwarmPulse 3D</h1>
         <div class="stat-row">
@@ -246,7 +509,13 @@
             <span class="stat-value" id="last-update">--:--:--</span>
         </div>
     </div>
-    
+
+    <div class="search-container">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="搜尋節點 (Hostname)..." autocomplete="off" />
+        <button id="search-clear" class="search-clear hidden">✕</button>
+    </div>
+
     <div id="node-list">
         <h2>節點列表</h2>
         <div id="nodes-container">
@@ -255,7 +524,51 @@
             </p>
         </div>
     </div>
-    
+
+    <div id="hover-panel" class="hover-panel hidden">
+        <div class="hover-header">
+            <span class="hover-icon">🔮</span>
+            <span id="hover-hostname" class="hover-hostname">-</span>
+        </div>
+        <div class="hover-body">
+            <div class="hover-row">
+                <span class="hover-label">Node ID:</span>
+                <span id="hover-nodeid" class="hover-value">-</span>
+            </div>
+            <div class="hover-divider"></div>
+            <div class="hover-row">
+                <span class="hover-label">CPU</span>
+                <div class="hover-bar">
+                    <div id="hover-cpu-bar" class="hover-bar-fill"></div>
+                </div>
+                <span id="hover-cpu-value" class="hover-value">-</span>
+            </div>
+            <div class="hover-row">
+                <span class="hover-label">Memory</span>
+                <div class="hover-bar">
+                    <div id="hover-mem-bar" class="hover-bar-fill"></div>
+                </div>
+                <span id="hover-mem-value" class="hover-value">-</span>
+            </div>
+            <div class="hover-divider"></div>
+            <div class="hover-row">
+                <span class="hover-label">最後心跳:</span>
+                <span id="hover-heartbeat" class="hover-value">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="detail-panel" class="detail-panel hidden">
+        <div class="detail-header">
+            <span class="detail-title">節點詳情</span>
+            <button id="detail-close" class="detail-close">✕</button>
+        </div>
+        <div id="detail-content" class="detail-content">
+            <!-- 由 JS 動態填充 -->
+        </div>
+    </div>
+
     <script type="module" src="game.js"></script>
 </body>
+
 </html>

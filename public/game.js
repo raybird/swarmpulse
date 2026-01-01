@@ -58,6 +58,13 @@ let isDragging = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+// Hover 狀態
+let mouseScreenX = 0;
+let mouseScreenY = 0;
+let hoveredNodeId = null;
+let selectedNodeId = null;
+let searchQuery = '';
+
 // ============================================
 // 初始化 PlayCanvas
 // ============================================
@@ -90,6 +97,9 @@ async function initPlayCanvas() {
 
     // 設定相機控制
     setupCameraControls();
+
+    // 初始化詳情面板關閉按鈕
+    document.getElementById('detail-close').onclick = () => deselectNode();
 
     // 隱藏載入提示
     document.getElementById('loading').style.display = 'none';
@@ -339,6 +349,31 @@ function setupCameraControls() {
     canvas.addEventListener('touchend', () => {
         isDragging = false;
     });
+
+    // 監聽滑鼠移動以進行 Hover 偵測
+    canvas.addEventListener('mousemove', (e) => {
+        mouseScreenX = e.clientX;
+        mouseScreenY = e.clientY;
+    });
+
+    // 監聽點擊以選取節點
+    canvas.addEventListener('mousedown', (e) => {
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+        // 如果移動距離很小，視為點擊而非拖曳
+        const dist = Math.hypot(e.clientX - lastMouseX, e.clientY - lastMouseY);
+        if (dist < 5) {
+            const nodeId = findHoveredNode(e.clientX, e.clientY);
+            if (nodeId) {
+                selectNode(nodeId);
+            } else {
+                deselectNode();
+            }
+        }
+    });
 }
 
 // ============================================
@@ -535,6 +570,200 @@ function hslToRgb(h, s, l) {
     return { r, g, b };
 }
 
+/**
+ * 尋找滑鼠下方的節點（Raycast）
+ */
+function findHoveredNode(screenX, screenY) {
+    const camera = cameraEntity.camera;
+
+    // 將螢幕座標轉換為世界空間的射線
+    const near = camera.screenToWorld(screenX, screenY, camera.nearClip);
+    const far = camera.screenToWorld(screenX, screenY, camera.farClip);
+
+    const rayOrigin = near;
+    const rayDir = new pc.Vec3().sub2(far, near).normalize();
+
+    let closestNodeId = null;
+    let minDistance = Infinity;
+
+    for (const [nodeId, nodeData] of nodeEntities) {
+        const spherePos = nodeData.entity.getPosition();
+        // 簡單的點到射線距離偵測（球體碰撞）
+        const distance = rayToSphereDistance(rayOrigin, rayDir, spherePos, CONFIG.NODE_BASE_SIZE);
+
+        if (distance !== null && distance < minDistance) {
+            minDistance = distance;
+            closestNodeId = nodeId;
+        }
+    }
+
+    return closestNodeId;
+}
+
+/**
+ * 射線與球體碰撞偵測
+ */
+function rayToSphereDistance(rayOrigin, rayDir, sphereCenter, sphereRadius) {
+    const L = new pc.Vec3().sub2(sphereCenter, rayOrigin);
+    const tca = L.dot(rayDir);
+    if (tca < 0) return null; // 球在射線後方
+
+    const d2 = L.dot(L) - tca * tca;
+    const radius2 = sphereRadius * sphereRadius;
+
+    if (d2 > radius2) return null; // 沒射中
+
+    const thc = Math.sqrt(radius2 - d2);
+    return tca - thc; // 回傳最近的交點距離
+}
+
+/**
+ * 更新 Hover 面板 UI
+ */
+function updateHoverPanel(nodeId, mouseX, mouseY) {
+    const panel = document.getElementById('hover-panel');
+
+    if (!nodeId) {
+        panel.classList.add('hidden');
+        hoveredNodeId = null;
+        return;
+    }
+
+    const nodeData = nodeEntities.get(nodeId);
+    if (!nodeData) return;
+
+    panel.classList.remove('hidden');
+    hoveredNodeId = nodeId;
+
+    // 定位面板
+    const offset = 20;
+    let x = mouseX + offset;
+    let y = mouseY + offset;
+
+    // 檢查邊界防止超出視窗
+    const panelWidth = panel.offsetWidth;
+    const panelHeight = panel.offsetHeight;
+
+    if (x + panelWidth > window.innerWidth) {
+        x = mouseX - panelWidth - offset;
+    }
+    if (y + panelHeight > window.innerHeight) {
+        y = mouseY - panelHeight - offset;
+    }
+
+    panel.style.left = `${x}px`;
+    panel.style.top = `${y}px`;
+
+    // 更新內容
+    const state = nodeData.state;
+    document.getElementById('hover-hostname').textContent = state.hostname;
+    document.getElementById('hover-nodeid').textContent = state.nodeId.slice(0, 12) + '...';
+
+    const cpuVal = state.cpuUsage.toFixed(1);
+    const memVal = state.memoryUsage.toFixed(1);
+
+    document.getElementById('hover-cpu-value').textContent = `${cpuVal}%`;
+    document.getElementById('hover-mem-value').textContent = `${memVal}%`;
+    document.getElementById('hover-cpu-bar').style.width = `${state.cpuUsage}%`;
+    document.getElementById('hover-mem-bar').style.width = `${state.memoryUsage}%`;
+
+    // 計算最後心跳時間
+    const secondsAgo = Math.max(0, Math.floor((Date.now() - state.timestamp) / 1000));
+    document.getElementById('hover-heartbeat').textContent = `${secondsAgo} 秒前`;
+}
+
+/**
+ * 選取節點
+ */
+function selectNode(nodeId) {
+    selectedNodeId = nodeId;
+    const nodeData = nodeEntities.get(nodeId);
+    if (!nodeData) return;
+
+    updateDetailPanel(nodeId);
+    document.getElementById('detail-panel').classList.remove('hidden');
+}
+
+/**
+ * 取消選取
+ */
+function deselectNode() {
+    selectedNodeId = null;
+    document.getElementById('detail-panel').classList.add('hidden');
+}
+
+/**
+ * 更新詳情面板
+ */
+function updateDetailPanel(nodeId) {
+    const nodeData = nodeEntities.get(nodeId);
+    if (!nodeData) return;
+
+    const state = nodeData.state;
+    const container = document.getElementById('detail-content');
+
+    // 生成 Containers HTML
+    let containersHtml = '<p style="color: #666; font-size: 13px;">無運行中的容器</p>';
+    if (state.containers && state.containers.length > 0) {
+        containersHtml = state.containers.map(c => `
+            <div class="container-item">
+                <div class="container-name">📦 ${c.name}</div>
+                <div class="container-image">${c.image}</div>
+                <div class="container-status">${c.status}</div>
+            </div>
+        `).join('');
+    }
+
+    container.innerHTML = `
+        <div class="detail-section">
+            <div class="detail-section-title">📍 基本資訊</div>
+            <div class="detail-info-grid">
+                <div class="detail-info-item">
+                    <span class="detail-info-label">HOSTNAME</span>
+                    <span class="detail-info-value">${state.hostname}</span>
+                </div>
+                <div class="detail-info-item">
+                    <span class="detail-info-label">ROLE</span>
+                    <span class="detail-info-value">${(state.role || 'worker').toUpperCase()}</span>
+                </div>
+                <div class="detail-info-item">
+                    <span class="detail-info-label">IP ADDRESS</span>
+                    <span class="detail-info-value">${state.ip || '未知'}</span>
+                </div>
+                <div class="detail-info-item">
+                    <span class="detail-info-label">NODE ID</span>
+                    <span class="detail-info-value">${state.nodeId.slice(0, 12)}...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <div class="detail-section-title">📊 資源使用率</div>
+            <div class="detail-info-grid">
+                <div class="detail-info-item">
+                    <span class="detail-info-label">CPU USAGE</span>
+                    <span class="detail-info-value">${state.cpuUsage.toFixed(1)}%</span>
+                </div>
+                <div class="detail-info-item">
+                    <span class="detail-info-label">MEMORY USAGE</span>
+                    <span class="detail-info-value">${state.memoryUsage.toFixed(1)}%</span>
+                </div>
+                <div class="detail-info-item">
+                    <span class="detail-info-label">DISK USAGE</span>
+                    <span class="detail-info-value">${state.diskUsage ? state.diskUsage.toFixed(1) + '%' : '未知'}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <div class="detail-section-title">📦 CONTAINERS (${state.containers?.length || 0})</div>
+            <div class="container-list">
+                ${containersHtml}
+            </div>
+        </div>
+    `;
+}
+
 // ============================================
 // 更新迴圈
 // ============================================
@@ -599,6 +828,34 @@ function setupUpdateLoop() {
         if (!isDragging) {
             cameraAngle += dt * 0.05;
             updateCameraPosition();
+        }
+
+        // 處理選取狀態與搜尋篩選的視覺效果
+        for (const [nodeId, nodeData] of nodeEntities) {
+            let targetOpacity = 1.0;
+
+            // 搜尋篩選優先
+            if (searchQuery && !nodeData.state.hostname.toLowerCase().includes(searchQuery)) {
+                targetOpacity = 0.1; // 不符合搜尋的變更暗
+            } else if (selectedNodeId && nodeId !== selectedNodeId) {
+                targetOpacity = 0.3; // 非選取但符合搜尋的節點
+            }
+
+            const currentOpacity = nodeData.material.opacity || 1.0;
+            if (Math.abs(currentOpacity - targetOpacity) > 0.01) {
+                nodeData.material.opacity = pc.math.lerp(currentOpacity, targetOpacity, dt * 5);
+                nodeData.material.blendType = nodeData.material.opacity < 0.99 ? pc.BLEND_NORMAL : pc.BLEND_NONE;
+                nodeData.material.update();
+            }
+        }
+
+        // 處理 Hover 偵測
+        const currentHoveredId = findHoveredNode(mouseScreenX, mouseScreenY);
+        updateHoverPanel(currentHoveredId, mouseScreenX, mouseScreenY);
+
+        // 如果詳情面板開啟，持續更新內容（針對當前選取的節點）
+        if (selectedNodeId) {
+            updateDetailPanel(selectedNodeId);
         }
     });
 }
@@ -745,6 +1002,31 @@ function updateNodeList(nodes) {
         .join('');
 }
 
+/**
+ * 搜尋功能初始化
+ */
+function setupSearch() {
+    const input = document.getElementById('search-input');
+    const clearBtn = document.getElementById('search-clear');
+
+    input.addEventListener('input', (e) => {
+        searchQuery = e.target.value.toLowerCase().trim();
+        clearBtn.classList.toggle('hidden', !searchQuery);
+    });
+
+    clearBtn.addEventListener('click', () => {
+        input.value = '';
+        searchQuery = '';
+        clearBtn.classList.add('hidden');
+        input.focus();
+    });
+
+    // 防止在搜尋框輸入時觸發 3D 快捷鍵（如果有地話）
+    input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+    });
+}
+
 // ============================================
 // 啟動
 // ============================================
@@ -754,6 +1036,7 @@ async function main() {
 
     await initPlayCanvas();
     setupUpdateLoop();
+    setupSearch();
 
     // 開始資料同步
     await syncClusterState();
